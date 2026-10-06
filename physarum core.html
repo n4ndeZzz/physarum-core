@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Physarum — núcleo</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html,body{width:100%;height:100%;overflow:hidden;background:#050403;font-family:'Courier New',monospace;color:#eee;}
+  #glcanvas{position:fixed;inset:0;display:block;}
+  #panel{
+    position:fixed; left:20px; top:20px; z-index:5;
+    background:rgba(10,8,8,0.6); border:1px solid rgba(255,255,255,0.1);
+    border-radius:8px; padding:12px 14px; font-size:11px; max-width:280px;
+  }
+  #panel h1{font-size:13px; margin-bottom:8px;}
+  #panel .row{display:flex; align-items:center; gap:8px; margin-bottom:6px;}
+  #panel .row label{width:100px;}
+  #panel .row input{flex:1;}
+  #panel .row span{width:36px; text-align:right; color:#f5a35a;}
+</style>
+</head>
+<body>
+<canvas id="glcanvas"></canvas>
+<div id="panel">
+  <h1>physarum — núcleo (sin campo, sin agentes con nombre todavía)</h1>
+  <div class="row"><label>sensor dist (SD)</label><input type="range" id="sd" min="2" max="40" value="9" step="0.5"><span id="sdv"></span></div>
+  <div class="row"><label>sensor angle (SA)</label><input type="range" id="sa" min="0.1" max="1.5" value="0.5" step="0.01"><span id="sav"></span></div>
+  <div class="row"><label>rotation (RA)</label><input type="range" id="ra" min="0.02" max="1.2" value="0.4" step="0.01"><span id="rav"></span></div>
+  <div class="row"><label>move dist (MD)</label><input type="range" id="md" min="0.3" max="6" value="1.5" step="0.1"><span id="mdv"></span></div>
+  <div class="row"><label>decay</label><input type="range" id="decay" min="0.85" max="0.99" value="0.94" step="0.001"><span id="decayv"></span></div>
+</div>
+<script>
+const canvas = document.getElementById('glcanvas');
+const gl = canvas.getContext('webgl2');
+if (!gl) { document.body.innerHTML = '<p style="color:#fff;padding:20px">WebGL2 no disponible.</p>'; throw new Error('no webgl2'); }
+
+const extFloat = gl.getExtension('EXT_color_buffer_float');
+if (!extFloat) { document.body.innerHTML = '<p style="color:#fff;padding:20px">Este navegador no soporta texturas float renderizables (EXT_color_buffer_float).</p>'; throw new Error('no float ext'); }
+
+function resize(){
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+function compile(src, type){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){
+    console.error(gl.getShaderInfoLog(s));
+    throw new Error('shader compile error');
+  }
+  return s;
+}
+function link(vsSrc, fsSrc){
+  const vs = compile(vsSrc, gl.VERTEX_SHADER);
+  const fs = compile(fsSrc, gl.FRAGMENT_SHADER);
+  const p = gl.createProgram();
+  gl.attachShader(p, vs); gl.attachShader(p, fs);
+  gl.linkProgram(p);
+  if(!gl.getProgramParameter(p, gl.LINK_STATUS)){
+    console.error(gl.getProgramInfoLog(p));
+    throw new Error('program link error');
+  }
+  return p;
+}
+
+const FULLSCREEN_VERT = `#version 300 es
+in vec2 aPosition;
+void main(){ gl_Position = vec4(aPosition,0.0,1.0); }`;
+
+const AGENT_UPDATE_FRAG = `#version 300 es
+precision highp float;
+uniform sampler2D uAgentState;
+uniform sampler2D uTrailMap;
+uniform vec2 uAgentTexSize;
+uniform vec2 uTrailTexSize;
+uniform float uSensorDistance;
+uniform float uSensorAngle;
+uniform float uRotationAngle;
+uniform float uMoveDistance;
+uniform float uTime;
+out vec4 fragColor;
+const float TWO_PI = 6.28318530718;
+float hash(vec2 p){
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+float senseTrail(vec2 pos, float heading, float angleOffset){
+  float ang = heading + angleOffset;
+  vec2 dir = vec2(cos(ang), sin(ang));
+  vec2 samplePos = pos + dir * (uSensorDistance / uTrailTexSize);
+  samplePos = fract(samplePos + 1.0);
+  return texture(uTrailMap, samplePos).r;
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy / uAgentTexSize;
+  vec4 state = texture(uAgentState, uv);
+  vec2 pos = state.rg;
+  float heading = state.b * TWO_PI;
+
+  float left   = senseTrail(pos, heading,  uSensorAngle);
+  float center = senseTrail(pos, heading,  0.0);
+  float right  = senseTrail(pos, heading, -uSensorAngle);
+
+  float rnd = hash(uv + uTime);
+
+  if (center > left && center > right) {
+  } else if (left > right) {
+    heading += uRotationAngle;
+  } else if (right > left) {
+    heading -= uRotationAngle;
+  } else if (left == right && center <= left) {
+    heading += (rnd > 0.5 ? uRotationAngle : -uRotationAngle);
+  }
+
+  vec2 dir = vec2(cos(heading), sin(heading));
+  vec2 newPos = fract(pos + dir * (uMoveDistance / uTrailTexSize) + 1.0);
+  float newHeadingN = mod(heading, TWO_PI) / TWO_PI;
+  fragColor = vec4(newPos, newHeadingN, state.a);
+}`;
+
+const DEPOSIT_VERT = `#version 300 es
+precision highp float;
+uniform sampler2D uAgentState;
+uniform ivec2 uAgentTexSize;
+void main(){
+  int x = gl_VertexID % uAgentTexSize.x;
+  int y = gl_VertexID / uAgentTexSize.x;
+  vec4 state = texelFetch(uAgentState, ivec2(x,y), 0);
+  vec2 clip = state.rg * 2.0 - 1.0;
+  gl_Position = vec4(clip, 0.0, 1.0);
+  gl_PointSize = 1.0;
+}`;
+
+const DEPOSIT_FRAG = `#version 300 es
+precision highp float;
+uniform float uDepositAmount;
+out vec4 fragColor;
+void main(){ fragColor = vec4(uDepositAmount, 0.0, 0.0, 1.0); }`;
+
+const DIFFUSE_DECAY_FRAG = `#version 300 es
+precision highp float;
+uniform sampler2D uTrailMap;
+uniform vec2 uTrailTexSize;
+uniform float uDecay;
+out vec4 fragColor;
+void main(){
+  vec2 uv = gl_FragCoord.xy / uTrailTexSize;
+  vec2 texel = 1.0 / uTrailTexSize;
+  float sum = 0.0;
+  for(int dx=-1; dx<=1; dx++){
+    for(int dy=-1; dy<=1; dy++){
+      vec2 offset = vec2(float(dx), float(dy)) * texel;
+      sum += texture(uTrailMap, fract(uv+offset+1.0)).r;
+    }
+  }
+  float blurred = sum / 9.0;
+  fragColor = vec4(blurred * uDecay, 0.0, 0.0, 1.0);
+}`;
+
+const DISPLAY_FRAG = `#version 300 es
+precision highp float;
+uniform sampler2D uTrailMap;
+out vec4 fragColor;
+void main(){
+  vec2 uv = gl_FragCoord.xy / vec2(textureSize(uTrailMap,0));
+  float t = clamp(texture(uTrailMap, uv).r, 0.0, 1.0);
+  t = pow(t, 0.55);
+  vec3 dark = vec3(0.02,0.015,0.02);
+  vec3 mid  = vec3(0.55,0.22,0.08);
+  vec3 hot  = vec3(1.0,0.78,0.35);
+  vec3 col = mix(dark, mid, clamp(t*2.0,0.0,1.0));
+  col = mix(col, hot, clamp((t-0.5)*2.0,0.0,1.0));
+  fragColor = vec4(col, 1.0);
+}`;
+
+const progAgentUpdate = link(FULLSCREEN_VERT, AGENT_UPDATE_FRAG);
+const progDeposit = link(DEPOSIT_VERT, DEPOSIT_FRAG);
+const progDiffuseDecay = link(FULLSCREEN_VERT, DIFFUSE_DECAY_FRAG);
+const progDisplay = link(FULLSCREEN_VERT, DISPLAY_FRAG);
+
+// quad fullscreen (triangle strip)
+const quadBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+
+function bindQuad(prog){
+  const loc = gl.getAttribLocation(prog, 'aPosition');
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+}
+
+// ---- tamaños ----
+const AGENT_TEX_W = 256, AGENT_TEX_H = 256; // 65536 agentes
+const N_AGENTS = AGENT_TEX_W * AGENT_TEX_H;
+const TRAIL_W = 900, TRAIL_H = 900;
+
+function makeFloatTexture(w, h, data){
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, data);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return tex;
+}
+function makeFBO(tex){
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return fbo;
+}
+
+// estado inicial de agentes: posiciones random, heading random
+const initData = new Float32Array(N_AGENTS * 4);
+for(let i=0;i<N_AGENTS;i++){
+  initData[i*4+0] = Math.random();
+  initData[i*4+1] = Math.random();
+  initData[i*4+2] = Math.random();
+  initData[i*4+3] = 0.0;
+}
+let agentTexA = makeFloatTexture(AGENT_TEX_W, AGENT_TEX_H, initData);
+let agentTexB = makeFloatTexture(AGENT_TEX_W, AGENT_TEX_H, null);
+let agentFboA = makeFBO(agentTexA);
+let agentFboB = makeFBO(agentTexB);
+
+let trailTexA = makeFloatTexture(TRAIL_W, TRAIL_H, null);
+let trailTexB = makeFloatTexture(TRAIL_W, TRAIL_H, null);
+let trailFboA = makeFBO(trailTexA);
+let trailFboB = makeFBO(trailTexB);
+
+gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+// ---- parametros controlables ----
+const params = { sd:9, sa:0.5, ra:0.4, md:1.5, decay:0.94 };
+function bindSlider(id, key, vid, fmt){
+  const el = document.getElementById(id);
+  const vel = document.getElementById(vid);
+  const update = () => { params[key] = parseFloat(el.value); vel.textContent = fmt(params[key]); };
+  el.addEventListener('input', update);
+  update();
+}
+bindSlider('sd','sd','sdv', v=>v.toFixed(1));
+bindSlider('sa','sa','sav', v=>v.toFixed(2));
+bindSlider('ra','ra','rav', v=>v.toFixed(2));
+bindSlider('md','md','mdv', v=>v.toFixed(1));
+bindSlider('decay','decay','decayv', v=>v.toFixed(3));
+
+const startTime = performance.now();
+
+function stepAgents(){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, agentFboB);
+  gl.viewport(0,0,AGENT_TEX_W,AGENT_TEX_H);
+  gl.useProgram(progAgentUpdate);
+  bindQuad(progAgentUpdate);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, agentTexA);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, trailTexA);
+  gl.uniform1i(gl.getUniformLocation(progAgentUpdate,'uAgentState'), 0);
+  gl.uniform1i(gl.getUniformLocation(progAgentUpdate,'uTrailMap'), 1);
+  gl.uniform2f(gl.getUniformLocation(progAgentUpdate,'uAgentTexSize'), AGENT_TEX_W, AGENT_TEX_H);
+  gl.uniform2f(gl.getUniformLocation(progAgentUpdate,'uTrailTexSize'), TRAIL_W, TRAIL_H);
+  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uSensorDistance'), params.sd);
+  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uSensorAngle'), params.sa);
+  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uRotationAngle'), params.ra);
+  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uMoveDistance'), params.md);
+  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uTime'), (performance.now()-startTime)/1000.0);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  [agentTexA, agentTexB] = [agentTexB, agentTexA];
+  [agentFboA, agentFboB] = [agentFboB, agentFboA];
+}
+
+function depositAgents(){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, trailFboA);
+  gl.viewport(0,0,TRAIL_W,TRAIL_H);
+  gl.useProgram(progDeposit);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.ONE, gl.ONE);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, agentTexA);
+  gl.uniform1i(gl.getUniformLocation(progDeposit,'uAgentState'), 0);
+  gl.uniform2i(gl.getUniformLocation(progDeposit,'uAgentTexSize'), AGENT_TEX_W, AGENT_TEX_H);
+  gl.uniform1f(gl.getUniformLocation(progDeposit,'uDepositAmount'), 0.08);
+  gl.drawArrays(gl.POINTS, 0, N_AGENTS);
+  gl.disable(gl.BLEND);
+}
+
+function diffuseDecay(){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, trailFboB);
+  gl.viewport(0,0,TRAIL_W,TRAIL_H);
+  gl.useProgram(progDiffuseDecay);
+  bindQuad(progDiffuseDecay);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, trailTexA);
+  gl.uniform1i(gl.getUniformLocation(progDiffuseDecay,'uTrailMap'), 0);
+  gl.uniform2f(gl.getUniformLocation(progDiffuseDecay,'uTrailTexSize'), TRAIL_W, TRAIL_H);
+  gl.uniform1f(gl.getUniformLocation(progDiffuseDecay,'uDecay'), params.decay);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  [trailTexA, trailTexB] = [trailTexB, trailTexA];
+  [trailFboA, trailFboB] = [trailFboB, trailFboA];
+}
+
+function display(){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0,0,canvas.width,canvas.height);
+  gl.useProgram(progDisplay);
+  bindQuad(progDisplay);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, trailTexA);
+  gl.uniform1i(gl.getUniformLocation(progDisplay,'uTrailMap'), 0);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+function frame(){
+  stepAgents();
+  depositAgents();
+  diffuseDecay();
+  display();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
