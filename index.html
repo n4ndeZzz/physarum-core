@@ -19,6 +19,18 @@
   #panel .row label{width:100px;}
   #panel .row input{flex:1;}
   #panel .row span{width:36px; text-align:right; color:#f5a35a;}
+  #hud{
+    display:none;
+    position:fixed; right:20px; top:20px; z-index:6;
+    background:rgba(10,8,8,0.65); border:1px solid rgba(255,255,255,0.12);
+    border-radius:8px; padding:12px 14px; font-size:12px; min-width:230px;
+    pointer-events:none;
+  }
+  #hud h1{font-size:12px; margin-bottom:8px; color:#f5a35a; letter-spacing:0.5px; font-weight:600;}
+  #hud .row{display:flex; justify-content:space-between; gap:10px; margin-bottom:4px;}
+  #hud .row label{color:#9a9aa4;}
+  #hud .row span{color:#f5a35a; font-weight:600;}
+  #hud .hint{margin-top:8px; font-size:10px; color:#777; line-height:1.4;}
 </style>
 </head>
 <body>
@@ -31,6 +43,17 @@
   <div class="row"><label>rotation (RA)</label><input type="range" id="ra" min="0.02" max="1.2" value="0.4" step="0.01"><span id="rav"></span></div>
   <div class="row"><label>move dist (MD)</label><input type="range" id="md" min="0.3" max="6" value="1.5" step="0.1"><span id="mdv"></span></div>
   <div class="row"><label>decay</label><input type="range" id="decay" min="0.85" max="0.99" value="0.94" step="0.001"><span id="decayv"></span></div>
+</div>
+<div id="hud">
+  <h1>controles — en vivo</h1>
+  <div class="row"><label>SD (q/a)</label><span id="hud-sd">—</span></div>
+  <div class="row"><label>SA (w/s)</label><span id="hud-sa">—</span></div>
+  <div class="row"><label>RA (e/d)</label><span id="hud-ra">—</span></div>
+  <div class="row"><label>MD (r/f)</label><span id="hud-md">—</span></div>
+  <div class="row"><label>DECAY (↑/↓)</label><span id="hud-decay">—</span></div>
+  <div class="row"><label>SAGRADO (t/g)</label><span id="hud-sacred">—</span></div>
+  <div class="row"><label>PROFANACIÓN (space)</label><span id="hud-profanation">—</span></div>
+  <div class="hint">H oculta/muestra este panel · J pantalla completa</div>
 </div>
 <script>
 const canvas = document.getElementById('glcanvas');
@@ -320,10 +343,51 @@ window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (KEY_BINDINGS[k]) { heldKeys.add(k); e.preventDefault(); }
   if (e.code === 'Space') { profanationTriggerTime = performance.now(); e.preventDefault(); }
+  if (k === 'h') { toggleHud(); e.preventDefault(); }
+  if (k === 'j') { toggleFullscreen(); e.preventDefault(); }
 });
 window.addEventListener('keyup', (e) => {
   heldKeys.delete(e.key.toLowerCase());
 });
+
+// ═══════════════════════════════════════════════════════════════
+// HUD (H) — panel de solo lectura que muestra los valores actuales
+// de cada parámetro en tiempo real, para ver lo que se está tocando
+// sin exponer los sliders de mouse. J — pantalla completa, para la
+// performance en vivo.
+// ═══════════════════════════════════════════════════════════════
+const hud = document.getElementById('hud');
+const hudEls = {
+  sd: document.getElementById('hud-sd'),
+  sa: document.getElementById('hud-sa'),
+  ra: document.getElementById('hud-ra'),
+  md: document.getElementById('hud-md'),
+  decay: document.getElementById('hud-decay'),
+  sacred: document.getElementById('hud-sacred'),
+  profanation: document.getElementById('hud-profanation'),
+};
+let hudVisible = false;
+function toggleHud(){
+  hudVisible = !hudVisible;
+  hud.style.display = hudVisible ? 'block' : 'none';
+}
+function updateHud(){
+  if (!hudVisible) return;
+  hudEls.sd.textContent = params.sd.toFixed(1);
+  hudEls.sa.textContent = params.sa.toFixed(2);
+  hudEls.ra.textContent = params.ra.toFixed(2);
+  hudEls.md.textContent = params.md.toFixed(1);
+  hudEls.decay.textContent = params.decay.toFixed(3);
+  hudEls.sacred.textContent = params.sacredWeight.toFixed(2);
+  hudEls.profanation.textContent = params.profanationStrength.toFixed(2);
+}
+function toggleFullscreen(){
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(()=>{});
+  } else {
+    document.exitFullscreen().catch(()=>{});
+  }
+}
 
 function applyKeyboardControls(dt){
   for (const k of heldKeys){
@@ -497,6 +561,7 @@ function frame(){
   lastFrameTime = now;
 
   applyKeyboardControls(dt);
+  updateHud();
   stepAgents();
   depositAgents();
   diffuseDecay();
