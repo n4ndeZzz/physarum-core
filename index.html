@@ -9,6 +9,7 @@
   html,body{width:100%;height:100%;overflow:hidden;background:#050403;font-family:'Courier New',monospace;color:#eee;}
   #glcanvas{position:fixed;inset:0;display:block;}
   #panel{
+    display:none;
     position:fixed; left:20px; top:20px; z-index:5;
     background:rgba(10,8,8,0.6); border:1px solid rgba(255,255,255,0.1);
     border-radius:8px; padding:12px 14px; font-size:11px; max-width:280px;
@@ -253,7 +254,52 @@ bindSlider('ra','ra','rav', v=>v.toFixed(2));
 bindSlider('md','md','mdv', v=>v.toFixed(1));
 bindSlider('decay','decay','decayv', v=>v.toFixed(3));
 
+// ═══════════════════════════════════════════════════════════════
+// Controles en vivo por teclado — mantener presionada la tecla
+// desliza el parámetro de forma continua (como un fader real),
+// soltarla lo detiene. Nada de mouse: esto se toca mientras suena
+// la música.
+//   SD  sube Q / baja A
+//   SA  sube W / baja S
+//   RA  sube E / baja D
+//   MD  sube R / baja F
+//   DECAY sube ↑ / baja ↓
+// ═══════════════════════════════════════════════════════════════
+const KEY_BINDINGS = {
+  q:{param:'sd', dir: 1}, a:{param:'sd', dir:-1},
+  w:{param:'sa', dir: 1}, s:{param:'sa', dir:-1},
+  e:{param:'ra', dir: 1}, d:{param:'ra', dir:-1},
+  r:{param:'md', dir: 1}, f:{param:'md', dir:-1},
+  arrowup:{param:'decay', dir: 1}, arrowdown:{param:'decay', dir:-1},
+};
+const PARAM_RANGES = {
+  sd:    { min:2,    max:40,   ratePerSec:15.0 },
+  sa:    { min:0.1,  max:1.5,  ratePerSec:0.5  },
+  ra:    { min:0.02, max:1.2,  ratePerSec:0.45 },
+  md:    { min:0.3,  max:6,    ratePerSec:2.2  },
+  decay: { min:0.85, max:0.99, ratePerSec:0.05 },
+};
+const heldKeys = new Set();
+window.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  if (KEY_BINDINGS[k]) { heldKeys.add(k); e.preventDefault(); }
+});
+window.addEventListener('keyup', (e) => {
+  heldKeys.delete(e.key.toLowerCase());
+});
+
+function applyKeyboardControls(dt){
+  for (const k of heldKeys){
+    const bind = KEY_BINDINGS[k];
+    const range = PARAM_RANGES[bind.param];
+    let v = params[bind.param] + bind.dir * range.ratePerSec * dt;
+    v = Math.min(range.max, Math.max(range.min, v));
+    params[bind.param] = v;
+  }
+}
+
 const startTime = performance.now();
+let lastFrameTime = startTime;
 
 function stepAgents(){
   gl.bindFramebuffer(gl.FRAMEBUFFER, agentFboB);
@@ -317,6 +363,11 @@ function display(){
 }
 
 function frame(){
+  const now = performance.now();
+  const dt = Math.min((now - lastFrameTime) / 1000, 1/20);
+  lastFrameTime = now;
+
+  applyKeyboardControls(dt);
   stepAgents();
   depositAgents();
   diffuseDecay();
