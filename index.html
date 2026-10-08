@@ -263,8 +263,11 @@ void main(){
 // pulsa o parpadea alrededor, y además DEFORMA el muestreo del
 // rastro hacia cada centro (un lente gravitacional elemental), para
 // que se sienta que el espacio mismo se curva alrededor de ellos.
-// Sisón: halo frío y estable (orden). Luis7Lunes: halo cálido-oscuro
-// que parpadea sin ritmo (caos). Ningún texto, ningún ícono literal.
+// Sisón: halo verde-azulado (teal), frío y estable (orden). Luis7Lunes:
+// halo carmesí-vino, oscuro, que parpadea sin ritmo (caos). Ambos
+// colores nacen de la misma paleta oscura/ámbar de la obra —
+// contraste cromático, no choque "neón". Ningún texto, ningún
+// ícono literal.
 // ═══════════════════════════════════════════════════════════════
 const DISPLAY_FRAG = `#version 300 es
 precision highp float;
@@ -275,6 +278,7 @@ uniform float uInfluenceRadius;
 uniform float uSacredPull;
 uniform float uProfaneChaos;
 uniform float uTime;
+uniform float uStarted;
 out vec4 fragColor;
 
 vec2 warpToward(vec2 uv, vec2 center, float radius, float strength){
@@ -301,18 +305,18 @@ void main(){
   col = mix(col, hot, clamp((t-0.5)*2.0,0.0,1.0));
 
   float dSison = length(uv - uSisonPos);
-  float coreSison = smoothstep(uInfluenceRadius*0.16, uInfluenceRadius*0.02, dSison);
+  float coreSison = smoothstep(uInfluenceRadius*0.16, uInfluenceRadius*0.02, dSison) * uStarted;
   float ringSison = smoothstep(uInfluenceRadius*0.85, uInfluenceRadius*0.18, dSison) * (1.0-coreSison);
   float pulseSison = 0.55 + 0.45*sin(dSison*50.0 - uTime*1.5);
-  vec3 haloSison = vec3(0.35,0.55,0.95) * ringSison * pulseSison * (0.4+0.6*uSacredPull);
+  vec3 haloSison = vec3(0.22,0.62,0.62) * ringSison * pulseSison * (0.4+0.6*uSacredPull) * uStarted;
   col = mix(col, vec3(0.0), coreSison*0.92);
   col += haloSison;
 
   float dLuis = length(uv - uLuisPos);
-  float coreLuis = smoothstep(uInfluenceRadius*0.16, uInfluenceRadius*0.02, dLuis);
+  float coreLuis = smoothstep(uInfluenceRadius*0.16, uInfluenceRadius*0.02, dLuis) * uStarted;
   float flicker = 0.5 + 0.5*sin(uTime*11.0 + dLuis*80.0);
   float ringLuis = smoothstep(uInfluenceRadius*0.85, uInfluenceRadius*0.18, dLuis) * (1.0-coreLuis) * flicker;
-  vec3 haloLuis = vec3(0.75,0.15,0.55) * ringLuis * (0.4+0.6*uProfaneChaos);
+  vec3 haloLuis = vec3(0.68,0.10,0.22) * ringLuis * (0.4+0.6*uProfaneChaos) * uStarted;
   col = mix(col, vec3(0.0), coreLuis*0.92);
   col += haloLuis;
 
@@ -451,12 +455,18 @@ window.addEventListener('keyup', (e) => {
 const bgm = document.getElementById('bgm');
 const startHint = document.getElementById('startHint');
 let musicStarted = false;
+// La obra no existe antes de la música: el lienzo arranca vacío
+// (el trail map se crea en ceros) y la simulación entera — agentes,
+// Sisón, Luis7Lunes, deposito, difusión — está pausada hasta que
+// `started` se vuelve true. Solo entonces empiezan a "pintar".
+let started = false;
 function startMusic(){
   if (musicStarted) return;
   musicStarted = true;
   bgm.currentTime = 0;
   bgm.play().then(() => {
     startHint.style.opacity = '0';
+    started = true;
   }).catch(() => {
     musicStarted = false; // el navegador la bloqueó: permitir reintentar
   });
@@ -664,11 +674,14 @@ function display(){
   bindQuad(progDisplay);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, trailTexA);
   gl.uniform1i(gl.getUniformLocation(progDisplay,'uTrailMap'), 0);
+  // Antes de ENTER, ni el rastro ni las singularidades existen todavía:
+  // el lienzo debe verse completamente vacío, en silencio.
   gl.uniform2f(gl.getUniformLocation(progDisplay,'uSisonPos'), sison.pos.x, sison.pos.y);
   gl.uniform2f(gl.getUniformLocation(progDisplay,'uLuisPos'), luis7lunes.pos.x, luis7lunes.pos.y);
   gl.uniform1f(gl.getUniformLocation(progDisplay,'uInfluenceRadius'), params.influenceRadius);
-  gl.uniform1f(gl.getUniformLocation(progDisplay,'uSacredPull'), params.sacredPull);
-  gl.uniform1f(gl.getUniformLocation(progDisplay,'uProfaneChaos'), params.profaneChaos);
+  gl.uniform1f(gl.getUniformLocation(progDisplay,'uSacredPull'), started ? params.sacredPull : 0.0);
+  gl.uniform1f(gl.getUniformLocation(progDisplay,'uProfaneChaos'), started ? params.profaneChaos : 0.0);
+  gl.uniform1f(gl.getUniformLocation(progDisplay,'uStarted'), started ? 1.0 : 0.0);
   gl.uniform1f(gl.getUniformLocation(progDisplay,'uTime'), (performance.now()-startTime)/1000.0);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
@@ -679,14 +692,16 @@ function frame(){
   lastFrameTime = now;
 
   applyKeyboardControls(dt);
-  sison.update(dt, luis7lunes);
-  luis7lunes.update(dt, sison);
   updateHud();
 
-  stepAgents();
-  depositAgents();
-  depositEntities();
-  diffuseDecay();
+  if (started){
+    sison.update(dt, luis7lunes);
+    luis7lunes.update(dt, sison);
+    stepAgents();
+    depositAgents();
+    depositEntities();
+    diffuseDecay();
+  }
   display();
 
   requestAnimationFrame(frame);
