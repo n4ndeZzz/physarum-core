@@ -7,8 +7,9 @@ https://www.youtube.com/watch?v=-5OkuVBiFf4
 ## Concepto y uso del programa
 Interpreto la canción a través de tres familias de agentes que conviven en el mismo lienzo. El **physarum** es el rastro pagano: colectivo, anónimo, orgánico — nadie decide nada individualmente, el patrón emerge de miles de agentes moviéndose sobre el mismo mapa de rastro compartido. El **campo de flujo** (espiral con bandas concéntricas, sin ruido de por medio) es lo sagrado: orden geométrico que estructura el espacio de fondo. **Sison** y **Luis7Lunes** son los únicos dos agentes con nombre propio — se mueven entre ambas fuerzas, cada uno con su propia sensibilidad al orden y al impulso.
 
-## Programa
-https://github.com/n4ndeZzz/physarum-core
+# Programa
+n4ndeZzz.github.io/physarum-core
+___
 
 Controles (todo por teclado, nada de mouse):
 - **Q/A** — sensor distance · **W/S** — sensor angle · **E/D** — rotation angle · **R/F** — move distance (los cuatro parámetros del rastro pagano)
