@@ -3,27 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Physarum — núcleo</title>
+<title>Sisón · Luis7Lunes — singularidades</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;}
   html,body{width:100%;height:100%;overflow:hidden;background:#050403;font-family:'Courier New',monospace;color:#eee;}
   #glcanvas{position:fixed;inset:0;display:block;}
-  #panel{
-    display:none;
-    position:fixed; left:20px; top:20px; z-index:5;
-    background:rgba(10,8,8,0.6); border:1px solid rgba(255,255,255,0.1);
-    border-radius:8px; padding:12px 14px; font-size:11px; max-width:280px;
-  }
-  #panel h1{font-size:13px; margin-bottom:8px;}
-  #panel .row{display:flex; align-items:center; gap:8px; margin-bottom:6px;}
-  #panel .row label{width:100px;}
-  #panel .row input{flex:1;}
-  #panel .row span{width:36px; text-align:right; color:#f5a35a;}
   #hud{
     display:none;
     position:fixed; right:20px; top:20px; z-index:6;
     background:rgba(10,8,8,0.65); border:1px solid rgba(255,255,255,0.12);
-    border-radius:8px; padding:12px 14px; font-size:12px; min-width:230px;
+    border-radius:8px; padding:12px 14px; font-size:12px; min-width:250px;
     pointer-events:none;
   }
   #hud h1{font-size:12px; margin-bottom:8px; color:#f5a35a; letter-spacing:0.5px; font-weight:600;}
@@ -31,30 +20,29 @@
   #hud .row label{color:#9a9aa4;}
   #hud .row span{color:#f5a35a; font-weight:600;}
   #hud .hint{margin-top:8px; font-size:10px; color:#777; line-height:1.4;}
+  #startHint{
+    position:fixed; left:50%; bottom:28px; transform:translateX(-50%);
+    font-size:12px; color:rgba(255,255,255,0.55); letter-spacing:0.5px;
+    pointer-events:none; transition:opacity 0.6s ease;
+  }
 </style>
 </head>
 <body>
 <canvas id="glcanvas"></canvas>
-<canvas id="agentsCanvas" style="position:fixed;inset:0;pointer-events:none;z-index:2;"></canvas>
-<div id="panel">
-  <h1>physarum — núcleo (sin campo, sin agentes con nombre todavía)</h1>
-  <div class="row"><label>sensor dist (SD)</label><input type="range" id="sd" min="2" max="40" value="9" step="0.5"><span id="sdv"></span></div>
-  <div class="row"><label>sensor angle (SA)</label><input type="range" id="sa" min="0.1" max="1.5" value="0.5" step="0.01"><span id="sav"></span></div>
-  <div class="row"><label>rotation (RA)</label><input type="range" id="ra" min="0.02" max="1.2" value="0.4" step="0.01"><span id="rav"></span></div>
-  <div class="row"><label>move dist (MD)</label><input type="range" id="md" min="0.3" max="6" value="1.5" step="0.1"><span id="mdv"></span></div>
-  <div class="row"><label>decay</label><input type="range" id="decay" min="0.85" max="0.99" value="0.94" step="0.001"><span id="decayv"></span></div>
-</div>
+<audio id="bgm" src="assets/musica.mp3" preload="auto"></audio>
 <div id="hud">
-  <h1>controles — en vivo</h1>
-  <div class="row"><label>SD (q/a)</label><span id="hud-sd">—</span></div>
-  <div class="row"><label>SA (w/s)</label><span id="hud-sa">—</span></div>
-  <div class="row"><label>RA (e/d)</label><span id="hud-ra">—</span></div>
-  <div class="row"><label>MD (r/f)</label><span id="hud-md">—</span></div>
-  <div class="row"><label>DECAY (↑/↓)</label><span id="hud-decay">—</span></div>
-  <div class="row"><label>SAGRADO (t/g)</label><span id="hud-sacred">—</span></div>
+  <h1>sisón / luis7lunes — en vivo</h1>
+  <div class="row"><label>SISÓN · orden (q/a)</label><span id="hud-sd">—</span></div>
+  <div class="row"><label>LUIS7LUNES · caos (w/s)</label><span id="hud-sa">—</span></div>
+  <div class="row"><label>TENSIÓN (e/d)</label><span id="hud-ra">—</span></div>
+  <div class="row"><label>VELOCIDAD (r/f)</label><span id="hud-md">—</span></div>
+  <div class="row"><label>PERSISTENCIA (↑/↓)</label><span id="hud-decay">—</span></div>
+  <div class="row"><label>RADIO DE INFLUENCIA (t/g)</label><span id="hud-sacred">—</span></div>
   <div class="row"><label>PROFANACIÓN (space)</label><span id="hud-profanation">—</span></div>
+  <div class="row"><label>MÚSICA (enter)</label><span id="hud-music">—</span></div>
   <div class="hint">H oculta/muestra este panel · J pantalla completa</div>
 </div>
+<div id="startHint">ENTER — comenzar</div>
 <script>
 const canvas = document.getElementById('glcanvas');
 const gl = canvas.getContext('webgl2');
@@ -97,6 +85,20 @@ const FULLSCREEN_VERT = `#version 300 es
 in vec2 aPosition;
 void main(){ gl_Position = vec4(aPosition,0.0,1.0); }`;
 
+// ═══════════════════════════════════════════════════════════════
+// AGENT_UPDATE — cada uno de los 65.536 agentes de Physarum sensa
+// su rastro local Y, además, es empujado por dos campos causales
+// que nacen de la posición real de Sisón y de Luis7Lunes:
+//   · Sisón  → geometría ordenada (espiral + anillos) centrada en
+//              SU posición, con intensidad uSacredPull y radio de
+//              alcance uInfluenceRadius. Donde Sisón no llega, el
+//              orden no existe.
+//   · Luis7Lunes → perturbación aleatoria centrada en SU posición,
+//              con intensidad uProfaneChaos y el mismo radio.
+// La "profanación" (Space) sigue siendo un gesto global aparte: una
+// ruptura instantánea que no pertenece a ninguna de las dos
+// entidades, sino a la performance misma.
+// ═══════════════════════════════════════════════════════════════
 const AGENT_UPDATE_FRAG = `#version 300 es
 precision highp float;
 uniform sampler2D uAgentState;
@@ -108,7 +110,11 @@ uniform float uSensorAngle;
 uniform float uRotationAngle;
 uniform float uMoveDistance;
 uniform float uTime;
-uniform float uSacredWeight;
+uniform vec2 uSisonPos;
+uniform vec2 uLuisPos;
+uniform float uSacredPull;
+uniform float uProfaneChaos;
+uniform float uInfluenceRadius;
 uniform float uProfanationStrength;
 out vec4 fragColor;
 const float TWO_PI = 6.28318530718;
@@ -127,10 +133,11 @@ float senseTrail(vec2 pos, float heading, float angleOffset){
   return texture(uTrailMap, samplePos).r;
 }
 
-// campo sagrado: espiral radial con bandas concéntricas onduladas —
-// geometría ordenada (mandala/procesión), no ruido orgánico.
-float sacredFieldAngle(vec2 p){
-  vec2 center = vec2(0.5, 0.5);
+// geometría del orden: espiral + anillos concéntricos, pero ahora
+// centrada en la posición real de Sisón, no en el centro del lienzo.
+// Sisón no representa lo sagrado: lo sagrado existe porque Sisón
+// está ahí.
+float sacredFieldAngle(vec2 p, vec2 center){
   vec2 d = p - center;
   float dist = length(d);
   float baseAngle = atan(d.y, d.x);
@@ -160,14 +167,20 @@ void main(){
     heading += (rnd > 0.5 ? uRotationAngle : -uRotationAngle);
   }
 
-  // tirón de lo sagrado: empuja el heading hacia el ángulo del campo,
-  // proporcional a uSacredWeight (0 = puro rastro pagano, 1 = campo domina)
-  float sacredAngle = sacredFieldAngle(pos);
+  // tirón de Sisón: solo existe cerca de donde él está parado ahora.
+  float distToSison = length(pos - uSisonPos);
+  float sisonFalloff = exp(-distToSison / max(uInfluenceRadius, 0.02));
+  float sacredAngle = sacredFieldAngle(pos, uSisonPos);
   float diff = atan(sin(sacredAngle - heading), cos(sacredAngle - heading));
-  heading += diff * uSacredWeight * 0.10;
+  heading += diff * uSacredPull * sisonFalloff * 0.14;
 
-  // profanación: ráfaga de aleatoriedad que rompe tanto el rastro como
-  // el campo por un instante — el gesto en vivo, no algo permanente.
+  // caos de Luis7Lunes: solo existe cerca de donde él está parado ahora.
+  float distToLuis = length(pos - uLuisPos);
+  float luisFalloff = exp(-distToLuis / max(uInfluenceRadius, 0.02));
+  float rnd3 = hash(uv*2.3 + uTime*4.0 + uLuisPos);
+  heading += (rnd3 - 0.5) * uProfaneChaos * luisFalloff * TWO_PI * 0.4;
+
+  // profanación: ráfaga global, el gesto en vivo (Space), ajeno a ambos.
   float rnd2 = hash(uv*1.7 + uTime*7.0);
   heading += (rnd2 - 0.5) * uProfanationStrength * TWO_PI * 0.5;
 
@@ -196,6 +209,33 @@ uniform float uDepositAmount;
 out vec4 fragColor;
 void main(){ fragColor = vec4(uDepositAmount, 0.0, 0.0, 1.0); }`;
 
+// ═══════════════════════════════════════════════════════════════
+// ENTITY_DEPOSIT — Sisón y Luis7Lunes no son un dibujo flotando
+// sobre el rastro: cada uno inyecta directamente su propia marca
+// en el mapa de rastro, en el punto exacto donde están. El rastro
+// que ves no solo es producido por los 65.536 agentes: también es
+// producido por ellos.
+// ═══════════════════════════════════════════════════════════════
+const ENTITY_DEPOSIT_VERT = `#version 300 es
+precision highp float;
+uniform vec2 uPos;
+void main(){
+  vec2 clip = uPos * 2.0 - 1.0;
+  gl_Position = vec4(clip, 0.0, 1.0);
+  gl_PointSize = 30.0;
+}`;
+
+const ENTITY_DEPOSIT_FRAG = `#version 300 es
+precision highp float;
+uniform float uAmount;
+out vec4 fragColor;
+void main(){
+  vec2 c = gl_PointCoord - vec2(0.5);
+  float d = length(c) * 2.0;
+  float falloff = smoothstep(1.0, 0.0, d);
+  fragColor = vec4(uAmount * falloff, 0.0, 0.0, 1.0);
+}`;
+
 const DIFFUSE_DECAY_FRAG = `#version 300 es
 precision highp float;
 uniform sampler2D uTrailMap;
@@ -216,28 +256,75 @@ void main(){
   fragColor = vec4(blurred * uDecay, 0.0, 0.0, 1.0);
 }`;
 
+// ═══════════════════════════════════════════════════════════════
+// DISPLAY — además de pintar el mapa de rastro, dibuja a Sisón y
+// Luis7Lunes como dos singularidades abstractas: un núcleo que se
+// oscurece casi hasta el negro (horizonte de eventos) y un halo que
+// pulsa o parpadea alrededor, y además DEFORMA el muestreo del
+// rastro hacia cada centro (un lente gravitacional elemental), para
+// que se sienta que el espacio mismo se curva alrededor de ellos.
+// Sisón: halo frío y estable (orden). Luis7Lunes: halo cálido-oscuro
+// que parpadea sin ritmo (caos). Ningún texto, ningún ícono literal.
+// ═══════════════════════════════════════════════════════════════
 const DISPLAY_FRAG = `#version 300 es
 precision highp float;
 uniform sampler2D uTrailMap;
+uniform vec2 uSisonPos;
+uniform vec2 uLuisPos;
+uniform float uInfluenceRadius;
+uniform float uSacredPull;
+uniform float uProfaneChaos;
+uniform float uTime;
 out vec4 fragColor;
+
+vec2 warpToward(vec2 uv, vec2 center, float radius, float strength){
+  vec2 d = uv - center;
+  float dist = length(d);
+  float pull = exp(-dist / max(radius,0.001)) * strength * 0.5;
+  return uv - normalize(d + 1e-5) * pull * 0.08;
+}
+
 void main(){
   vec2 uv = gl_FragCoord.xy / vec2(textureSize(uTrailMap,0));
-  float t = clamp(texture(uTrailMap, uv).r, 0.0, 1.0);
+
+  vec2 warpedUV = uv;
+  warpedUV = warpToward(warpedUV, uSisonPos, uInfluenceRadius, uSacredPull);
+  warpedUV = warpToward(warpedUV, uLuisPos, uInfluenceRadius, uProfaneChaos);
+  warpedUV = fract(warpedUV + 1.0);
+
+  float t = clamp(texture(uTrailMap, warpedUV).r, 0.0, 1.0);
   t = pow(t, 0.55);
   vec3 dark = vec3(0.02,0.015,0.02);
   vec3 mid  = vec3(0.55,0.22,0.08);
   vec3 hot  = vec3(1.0,0.78,0.35);
   vec3 col = mix(dark, mid, clamp(t*2.0,0.0,1.0));
   col = mix(col, hot, clamp((t-0.5)*2.0,0.0,1.0));
+
+  float dSison = length(uv - uSisonPos);
+  float coreSison = smoothstep(uInfluenceRadius*0.16, uInfluenceRadius*0.02, dSison);
+  float ringSison = smoothstep(uInfluenceRadius*0.85, uInfluenceRadius*0.18, dSison) * (1.0-coreSison);
+  float pulseSison = 0.55 + 0.45*sin(dSison*50.0 - uTime*1.5);
+  vec3 haloSison = vec3(0.35,0.55,0.95) * ringSison * pulseSison * (0.4+0.6*uSacredPull);
+  col = mix(col, vec3(0.0), coreSison*0.92);
+  col += haloSison;
+
+  float dLuis = length(uv - uLuisPos);
+  float coreLuis = smoothstep(uInfluenceRadius*0.16, uInfluenceRadius*0.02, dLuis);
+  float flicker = 0.5 + 0.5*sin(uTime*11.0 + dLuis*80.0);
+  float ringLuis = smoothstep(uInfluenceRadius*0.85, uInfluenceRadius*0.18, dLuis) * (1.0-coreLuis) * flicker;
+  vec3 haloLuis = vec3(0.75,0.15,0.55) * ringLuis * (0.4+0.6*uProfaneChaos);
+  col = mix(col, vec3(0.0), coreLuis*0.92);
+  col += haloLuis;
+
   fragColor = vec4(col, 1.0);
 }`;
 
 const progAgentUpdate = link(FULLSCREEN_VERT, AGENT_UPDATE_FRAG);
 const progDeposit = link(DEPOSIT_VERT, DEPOSIT_FRAG);
+const progEntityDeposit = link(ENTITY_DEPOSIT_VERT, ENTITY_DEPOSIT_FRAG);
 const progDiffuseDecay = link(FULLSCREEN_VERT, DIFFUSE_DECAY_FRAG);
 const progDisplay = link(FULLSCREEN_VERT, DISPLAY_FRAG);
 
-// quad fullscreen (triangle strip)
 const quadBuf = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
@@ -291,50 +378,53 @@ let trailFboB = makeFBO(trailTexB);
 
 gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-// ---- parametros controlables ----
-const params = { sd:9, sa:0.5, ra:0.4, md:1.5, decay:0.94 };
-function bindSlider(id, key, vid, fmt){
-  const el = document.getElementById(id);
-  const vel = document.getElementById(vid);
-  const update = () => { params[key] = parseFloat(el.value); vel.textContent = fmt(params[key]); };
-  el.addEventListener('input', update);
-  update();
-}
-bindSlider('sd','sd','sdv', v=>v.toFixed(1));
-bindSlider('sa','sa','sav', v=>v.toFixed(2));
-bindSlider('ra','ra','rav', v=>v.toFixed(2));
-bindSlider('md','md','mdv', v=>v.toFixed(1));
-bindSlider('decay','decay','decayv', v=>v.toFixed(3));
+// ═══════════════════════════════════════════════════════════════
+// Parámetros de sensado del Physarum (SD/SA/RA/MD): quedan fijos.
+// Ya no son lo que el performer toca — son el "cuerpo" técnico del
+// sistema, afinado una vez. Lo que el performer controla en vivo
+// son las CARACTERÍSTICAS de Sisón y Luis7Lunes (abajo).
+// ═══════════════════════════════════════════════════════════════
+const FIXED_SENSOR = { sd:9, sa:0.5, ra:0.4, md:1.5 };
 
 // ═══════════════════════════════════════════════════════════════
-// Controles en vivo por teclado — mantener presionada la tecla
-// desliza el parámetro de forma continua (como un fader real),
-// soltarla lo detiene. Nada de mouse: esto se toca mientras suena
-// la música.
-//   SD  sube Q / baja A
-//   SA  sube W / baja S
-//   RA  sube E / baja D
-//   MD  sube R / baja F
-//   DECAY sube ↑ / baja ↓
+// Controles en vivo por teclado — las mismas teclas de siempre,
+// pero ahora cada una es una característica de Sisón o de
+// Luis7Lunes (o de su relación), no un parámetro abstracto del
+// algoritmo. Mantener presionada la tecla desliza el valor de
+// forma continua, como un fader real.
+//   SISÓN (orden)      sube Q / baja A
+//   LUIS7LUNES (caos)  sube W / baja S
+//   TENSIÓN entre ambos sube E / baja D
+//   VELOCIDAD de ambos sube R / baja F
+//   PERSISTENCIA del rastro sube ↑ / baja ↓
+//   RADIO DE INFLUENCIA sube T / baja G
+//   Space = profanación (ruptura global, instantánea)
 // ═══════════════════════════════════════════════════════════════
+const params = {
+  sacredPull: 0.5,
+  profaneChaos: 0.5,
+  tension: 1.0,
+  entitySpeed: 1.0,
+  decay: 0.94,
+  influenceRadius: 0.18,
+  profanationStrength: 0.0,
+};
 const KEY_BINDINGS = {
-  q:{param:'sd', dir: 1}, a:{param:'sd', dir:-1},
-  w:{param:'sa', dir: 1}, s:{param:'sa', dir:-1},
-  e:{param:'ra', dir: 1}, d:{param:'ra', dir:-1},
-  r:{param:'md', dir: 1}, f:{param:'md', dir:-1},
-  arrowup:{param:'decay', dir: 1}, arrowdown:{param:'decay', dir:-1},
-  t:{param:'sacredWeight', dir: 1}, g:{param:'sacredWeight', dir:-1},
+  q:{param:'sacredPull',   dir: 1}, a:{param:'sacredPull',   dir:-1},
+  w:{param:'profaneChaos', dir: 1}, s:{param:'profaneChaos', dir:-1},
+  e:{param:'tension',      dir: 1}, d:{param:'tension',      dir:-1},
+  r:{param:'entitySpeed',  dir: 1}, f:{param:'entitySpeed',  dir:-1},
+  arrowup:{param:'decay',  dir: 1}, arrowdown:{param:'decay', dir:-1},
+  t:{param:'influenceRadius', dir: 1}, g:{param:'influenceRadius', dir:-1},
 };
 const PARAM_RANGES = {
-  sd:    { min:2,    max:40,   ratePerSec:15.0 },
-  sa:    { min:0.1,  max:1.5,  ratePerSec:0.5  },
-  ra:    { min:0.02, max:1.2,  ratePerSec:0.45 },
-  md:    { min:0.3,  max:6,    ratePerSec:2.2  },
-  decay: { min:0.85, max:0.99, ratePerSec:0.05 },
-  sacredWeight: { min:0, max:1, ratePerSec:0.6 },
+  sacredPull:      { min:0,    max:1.6,  ratePerSec:0.7  },
+  profaneChaos:    { min:0,    max:1.6,  ratePerSec:0.7  },
+  tension:         { min:0.05, max:3.0,  ratePerSec:1.2  },
+  entitySpeed:     { min:0.3,  max:3.0,  ratePerSec:1.1  },
+  decay:           { min:0.85, max:0.99, ratePerSec:0.05 },
+  influenceRadius: { min:0.04, max:0.35, ratePerSec:0.18 },
 };
-params.sacredWeight = 0.0;
-params.profanationStrength = 0.0;
 let profanationTriggerTime = -99999;
 const PROFANATION_DECAY_MS = 1400;
 
@@ -345,16 +435,36 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Space') { profanationTriggerTime = performance.now(); e.preventDefault(); }
   if (k === 'h') { toggleHud(); e.preventDefault(); }
   if (k === 'j') { toggleFullscreen(); e.preventDefault(); }
+  if (e.key === 'Enter') { startMusic(); e.preventDefault(); }
 });
 window.addEventListener('keyup', (e) => {
   heldKeys.delete(e.key.toLowerCase());
 });
 
 // ═══════════════════════════════════════════════════════════════
-// HUD (H) — panel de solo lectura que muestra los valores actuales
-// de cada parámetro en tiempo real, para ver lo que se está tocando
-// sin exponer los sliders de mouse. J — pantalla completa, para la
-// performance en vivo.
+// Música — ENTER inicia assets/musica.mp3. Es la interacción
+// explícita del usuario que el navegador exige para desbloquear
+// audio. No se reinicia si ya está sonando. El HUD puede consultar
+// bgm.paused para saber si está reproduciéndose; currentTime queda
+// disponible para una futura sincronización evento-a-evento.
+// ═══════════════════════════════════════════════════════════════
+const bgm = document.getElementById('bgm');
+const startHint = document.getElementById('startHint');
+let musicStarted = false;
+function startMusic(){
+  if (musicStarted) return;
+  musicStarted = true;
+  bgm.currentTime = 0;
+  bgm.play().then(() => {
+    startHint.style.opacity = '0';
+  }).catch(() => {
+    musicStarted = false; // el navegador la bloqueó: permitir reintentar
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HUD (H) — panel de solo lectura con el estado de cada
+// característica en vivo. J — pantalla completa.
 // ═══════════════════════════════════════════════════════════════
 const hud = document.getElementById('hud');
 const hudEls = {
@@ -365,6 +475,7 @@ const hudEls = {
   decay: document.getElementById('hud-decay'),
   sacred: document.getElementById('hud-sacred'),
   profanation: document.getElementById('hud-profanation'),
+  music: document.getElementById('hud-music'),
 };
 let hudVisible = false;
 function toggleHud(){
@@ -373,13 +484,14 @@ function toggleHud(){
 }
 function updateHud(){
   if (!hudVisible) return;
-  hudEls.sd.textContent = params.sd.toFixed(1);
-  hudEls.sa.textContent = params.sa.toFixed(2);
-  hudEls.ra.textContent = params.ra.toFixed(2);
-  hudEls.md.textContent = params.md.toFixed(1);
+  hudEls.sd.textContent = params.sacredPull.toFixed(2);
+  hudEls.sa.textContent = params.profaneChaos.toFixed(2);
+  hudEls.ra.textContent = params.tension.toFixed(2);
+  hudEls.md.textContent = params.entitySpeed.toFixed(2);
   hudEls.decay.textContent = params.decay.toFixed(3);
-  hudEls.sacred.textContent = params.sacredWeight.toFixed(2);
+  hudEls.sacred.textContent = params.influenceRadius.toFixed(2);
   hudEls.profanation.textContent = params.profanationStrength.toFixed(2);
+  hudEls.music.textContent = musicStarted && !bgm.paused ? '▶' : '—';
 }
 function toggleFullscreen(){
   if (!document.fullscreenElement) {
@@ -405,92 +517,70 @@ const startTime = performance.now();
 let lastFrameTime = startTime;
 
 // ═══════════════════════════════════════════════════════════════
-// Sison y Luis7Lunes — dos agentes con nombre, no anónimos.
-// Percepción: el mismo campo sagrado (fórmula replicada del shader),
-// un impulso propio tipo wander, y al otro agente. Sison (el beat,
-// la base) responde más al campo; Luis7Lunes (la barra, lo profano)
-// responde más a su propio impulso. Ambos escuchan el mismo control
-// en vivo de "peso de lo sagrado" (T/G), solo que con distinta
-// sensibilidad — es una lectura editable, no una verdad fija.
+// Sisón y Luis7Lunes — ya no son una capa decorativa sobre el
+// Physarum: sus posiciones SON los centros de los campos que leen
+// los 65.536 agentes (ver AGENT_UPDATE_FRAG) y SON los puntos donde
+// se inyecta rastro directamente (ver ENTITY_DEPOSIT). No se
+// dibujan como puntos con nombre: se visualizan como singularidades
+// abstractas dentro del propio shader de despliegue (DISPLAY_FRAG).
+//
+// Sisón es orden: avanza en una procesión circular alrededor del
+// centro del lienzo — un camino predecible y ritual. Su velocidad
+// angular depende de TENSIÓN y VELOCIDAD.
+//
+// Luis7Lunes es caos: deambula sin ruta fija (wander), y es atraído
+// u obligado a separarse de Sisón según TENSIÓN y la distancia entre
+// ambos. La profanación (Space) lo sacude a él con más fuerza que a
+// Sisón — es su gesto.
 // ═══════════════════════════════════════════════════════════════
-const agentsCanvas = document.getElementById('agentsCanvas');
-const actx = agentsCanvas.getContext('2d');
-function resizeAgentsCanvas(){
-  agentsCanvas.width = window.innerWidth;
-  agentsCanvas.height = window.innerHeight;
-}
-window.addEventListener('resize', resizeAgentsCanvas);
-resizeAgentsCanvas();
-
-function sacredFieldAngleJS(px, py){
-  const cx = 0.5, cy = 0.5;
-  const dx = px - cx, dy = py - cy;
-  const dist = Math.sqrt(dx*dx + dy*dy);
-  const baseAngle = Math.atan2(dy, dx);
-  const spiralTwist = 3.0, ringFreq = 10.0, ringAmp = 0.35;
-  return baseAngle + 1.5707963 + spiralTwist*dist*Math.PI*2*0.3 + ringAmp*Math.sin(dist*ringFreq*Math.PI*2);
-}
-
-class NamedAgent {
-  constructor(name, color, sacredSensitivity, wanderSensitivity, startX, startY){
-    this.name = name;
-    this.color = color;
-    this.sacredSensitivity = sacredSensitivity;
-    this.wanderSensitivity = wanderSensitivity;
+class Entity {
+  constructor(role, startX, startY){
+    this.role = role; // 'sacred' (Sisón) | 'profane' (Luis7Lunes)
     this.pos = {x:startX, y:startY};
     this.heading = Math.random()*Math.PI*2;
+    this.orbitAngle = Math.atan2(startY-0.5, startX-0.5);
     this.wanderAngle = Math.random()*Math.PI*2;
-    this.speed = 0.09; // unidades normalizadas por segundo
   }
   update(dt, other){
-    this.wanderAngle += (Math.random()-0.5) * 2.2 * dt;
+    if (this.role === 'sacred'){
+      const center = {x:0.5, y:0.5};
+      const orbitRadius = 0.28;
+      this.orbitAngle += params.tension * 0.4 * dt * params.entitySpeed;
+      const targetX = center.x + Math.cos(this.orbitAngle) * orbitRadius;
+      const targetY = center.y + Math.sin(this.orbitAngle) * orbitRadius;
+      this.pos.x += (targetX - this.pos.x) * Math.min(1, dt * 3.0);
+      this.pos.y += (targetY - this.pos.y) * Math.min(1, dt * 3.0);
+    } else {
+      this.wanderAngle += (Math.random()-0.5) * 2.6 * dt;
+      this.heading += (this.wanderAngle - this.heading) * dt * 1.5;
 
-    const sacredAngle = sacredFieldAngleJS(this.pos.x, this.pos.y);
-    let sdiff = sacredAngle - this.heading;
-    sdiff = Math.atan2(Math.sin(sdiff), Math.cos(sdiff));
+      const dx = other.pos.x - this.pos.x, dy = other.pos.y - this.pos.y;
+      const dist = Math.sqrt(dx*dx + dy*dy) || 0.0001;
+      const toward = Math.atan2(dy, dx);
+      const pullSign = dist < 0.1 ? -1 : 1; // muy cerca: se aleja
+      let odiff = toward - this.heading;
+      odiff = Math.atan2(Math.sin(odiff), Math.cos(odiff));
+      this.heading += odiff * pullSign * params.tension * 0.25 * dt;
 
-    let wdiff = this.wanderAngle - this.heading;
-    wdiff = Math.atan2(Math.sin(wdiff), Math.cos(wdiff));
+      const speed = 0.11 * params.entitySpeed;
+      this.pos.x += Math.cos(this.heading) * speed * dt;
+      this.pos.y += Math.sin(this.heading) * speed * dt;
+    }
 
-    // tensión mutua: atraídos si están lejos, se separan si están muy cerca
-    const dx = other.pos.x - this.pos.x, dy = other.pos.y - this.pos.y;
-    const dist = Math.sqrt(dx*dx + dy*dy) || 0.0001;
-    const towardOther = Math.atan2(dy, dx);
-    let odiff = towardOther - this.heading;
-    odiff = Math.atan2(Math.sin(odiff), Math.cos(odiff));
-    const otherPullSign = dist < 0.12 ? -1 : 1; // muy cerca: se separan
+    // profanación: sacude a ambos, a Luis7Lunes más que a Sisón.
+    const kick = (this.role === 'profane' ? 1.0 : 0.35) * params.profanationStrength;
+    if (kick > 0){
+      this.pos.x += (Math.random()-0.5) * kick * 0.05;
+      this.pos.y += (Math.random()-0.5) * kick * 0.05;
+    }
 
-    const turn =
-      sdiff * params.sacredWeight * this.sacredSensitivity * 1.4 +
-      wdiff * this.wanderSensitivity * 0.9 +
-      odiff * otherPullSign * 0.5;
-
-    this.heading += turn * dt;
-    this.heading += (Math.random()-0.5) * params.profanationStrength * 3.0 * dt;
-
-    this.pos.x += Math.cos(this.heading) * this.speed * dt;
-    this.pos.y += Math.sin(this.heading) * this.speed * dt;
-    this.pos.x = (this.pos.x + 1) % 1;
-    this.pos.y = (this.pos.y + 1) % 1;
-  }
-  draw(ctx, w, h){
-    const x = this.pos.x * w, y = this.pos.y * h;
-    ctx.beginPath();
-    ctx.arc(x, y, 7, 0, Math.PI*2);
-    ctx.fillStyle = this.color;
-    ctx.shadowColor = this.color;
-    ctx.shadowBlur = 16;
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.font = '12px monospace';
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.textAlign = 'center';
-    ctx.fillText(this.name, x, y - 14);
+    this.pos.x = (this.pos.x % 1 + 1) % 1;
+    this.pos.y = (this.pos.y % 1 + 1) % 1;
   }
 }
 
-const sison = new NamedAgent('Sison', '#6fd0e0', 1.3, 0.6, 0.35, 0.5);
-const luis7lunes = new NamedAgent('Luis7Lunes', '#e85ab0', 0.6, 1.3, 0.65, 0.5);
+const sison = new Entity('sacred', 0.78, 0.5);
+const luis7lunes = new Entity('profane', 0.3, 0.7);
 
 function stepAgents(){
   gl.bindFramebuffer(gl.FRAMEBUFFER, agentFboB);
@@ -503,12 +593,16 @@ function stepAgents(){
   gl.uniform1i(gl.getUniformLocation(progAgentUpdate,'uTrailMap'), 1);
   gl.uniform2f(gl.getUniformLocation(progAgentUpdate,'uAgentTexSize'), AGENT_TEX_W, AGENT_TEX_H);
   gl.uniform2f(gl.getUniformLocation(progAgentUpdate,'uTrailTexSize'), TRAIL_W, TRAIL_H);
-  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uSensorDistance'), params.sd);
-  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uSensorAngle'), params.sa);
-  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uRotationAngle'), params.ra);
-  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uMoveDistance'), params.md);
+  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uSensorDistance'), FIXED_SENSOR.sd);
+  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uSensorAngle'), FIXED_SENSOR.sa);
+  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uRotationAngle'), FIXED_SENSOR.ra);
+  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uMoveDistance'), FIXED_SENSOR.md);
   gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uTime'), (performance.now()-startTime)/1000.0);
-  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uSacredWeight'), params.sacredWeight);
+  gl.uniform2f(gl.getUniformLocation(progAgentUpdate,'uSisonPos'), sison.pos.x, sison.pos.y);
+  gl.uniform2f(gl.getUniformLocation(progAgentUpdate,'uLuisPos'), luis7lunes.pos.x, luis7lunes.pos.y);
+  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uSacredPull'), params.sacredPull);
+  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uProfaneChaos'), params.profaneChaos);
+  gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uInfluenceRadius'), params.influenceRadius);
   gl.uniform1f(gl.getUniformLocation(progAgentUpdate,'uProfanationStrength'), params.profanationStrength);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
@@ -527,6 +621,24 @@ function depositAgents(){
   gl.uniform2i(gl.getUniformLocation(progDeposit,'uAgentTexSize'), AGENT_TEX_W, AGENT_TEX_H);
   gl.uniform1f(gl.getUniformLocation(progDeposit,'uDepositAmount'), 0.08);
   gl.drawArrays(gl.POINTS, 0, N_AGENTS);
+  gl.disable(gl.BLEND);
+}
+
+function depositEntities(){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, trailFboA);
+  gl.viewport(0,0,TRAIL_W,TRAIL_H);
+  gl.useProgram(progEntityDeposit);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.ONE, gl.ONE);
+
+  gl.uniform2f(gl.getUniformLocation(progEntityDeposit,'uPos'), sison.pos.x, sison.pos.y);
+  gl.uniform1f(gl.getUniformLocation(progEntityDeposit,'uAmount'), 0.12 + 0.3*params.sacredPull);
+  gl.drawArrays(gl.POINTS, 0, 1);
+
+  gl.uniform2f(gl.getUniformLocation(progEntityDeposit,'uPos'), luis7lunes.pos.x, luis7lunes.pos.y);
+  gl.uniform1f(gl.getUniformLocation(progEntityDeposit,'uAmount'), 0.12 + 0.3*params.profaneChaos);
+  gl.drawArrays(gl.POINTS, 0, 1);
+
   gl.disable(gl.BLEND);
 }
 
@@ -552,6 +664,12 @@ function display(){
   bindQuad(progDisplay);
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, trailTexA);
   gl.uniform1i(gl.getUniformLocation(progDisplay,'uTrailMap'), 0);
+  gl.uniform2f(gl.getUniformLocation(progDisplay,'uSisonPos'), sison.pos.x, sison.pos.y);
+  gl.uniform2f(gl.getUniformLocation(progDisplay,'uLuisPos'), luis7lunes.pos.x, luis7lunes.pos.y);
+  gl.uniform1f(gl.getUniformLocation(progDisplay,'uInfluenceRadius'), params.influenceRadius);
+  gl.uniform1f(gl.getUniformLocation(progDisplay,'uSacredPull'), params.sacredPull);
+  gl.uniform1f(gl.getUniformLocation(progDisplay,'uProfaneChaos'), params.profaneChaos);
+  gl.uniform1f(gl.getUniformLocation(progDisplay,'uTime'), (performance.now()-startTime)/1000.0);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
@@ -561,17 +679,15 @@ function frame(){
   lastFrameTime = now;
 
   applyKeyboardControls(dt);
-  updateHud();
-  stepAgents();
-  depositAgents();
-  diffuseDecay();
-  display();
-
   sison.update(dt, luis7lunes);
   luis7lunes.update(dt, sison);
-  actx.clearRect(0, 0, agentsCanvas.width, agentsCanvas.height);
-  sison.draw(actx, agentsCanvas.width, agentsCanvas.height);
-  luis7lunes.draw(actx, agentsCanvas.width, agentsCanvas.height);
+  updateHud();
+
+  stepAgents();
+  depositAgents();
+  depositEntities();
+  diffuseDecay();
+  display();
 
   requestAnimationFrame(frame);
 }
